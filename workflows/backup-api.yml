@@ -1,0 +1,65 @@
+name: Production Database Backup API
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      #Descarga el repositorio
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+      #Obtener la fecha actual
+      - name: Set current date
+        run: echo "CURRENT_DATE=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+      #Crear directorio de backups
+      - name: Create backups directory
+        run: mkdir -p backups
+      #Descargar backup desde la API
+      - name: Download Backup from API
+        env:
+          BACKUP_API_TOKEN: ${{ secrets.BACKUP_API_TOKEN }}
+        run: |
+          attempt_counter=0
+          max_attempts=5
+          until $(sudo curl -X GET -sl -f "https://${{secrets.DOMAIN_API}}/backup?token=${{ env.BACKUP_API_TOKEN }}" -o "backups/backup-${{ env.CURRENT_DATE }}.sql"); do
+            if [ ${attempt_counter} -eq ${max_attempts} ]; then
+              echo "Failed to download backup after ${max_attempts} attempts."
+              exit 1
+            fi
+            attempt_counter=$(($attempt_counter+1))
+            echo "Attempt $attempt_counter failed! Trying again in 10 seconds..."
+            sleep 10
+          done
+      #Subir backup a GitHub artifacts
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup
+          path: 'backups/backup-${{ env.CURRENT_DATE }}.sql'
+      #Commit y push del backup a GitHub
+      - name: Commit and Push Backup to Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          ## Comprimir el archivo de respaldo
+          tar -czf "backups/backup-${{ env.CURRENT_DATE }}.tar.gz" -C backups "backup-${{ env.CURRENT_DATE }}.sql"
+          ## Agregar el archivo comprimido al repositorio
+          git add "backups/backup-${{ env.CURRENT_DATE }}.tar.gz"
+          git commit -m "Add compressed database backup for ${{ env.CURRENT_DATE }}"
+          ## Crear la rama "backup" si no existe y hacer push
+          if git ls-remote --exit-code --heads origin backup; then
+            echo "Branch 'backup' exists. Pushing to 'backup'."
+          else
+            echo "Branch 'backup' does not exist. Creating 'backup' branch."
+            git branch backup
+          fi
+          # Hacer push a la rama "backup"
+          git push origin backup
+          #git push origin main
+      #Mensaje de finalización
+      - name:
+        run: echo "Backup completed successfully"

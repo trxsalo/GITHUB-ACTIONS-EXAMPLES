@@ -1,0 +1,39 @@
+name: Auto-deploy to Vercel
+# Ejecutar en eventos de push, pull request y manualmente
+on:
+  # Ejecutar en cada push a la rama main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+# Definir trabajos
+jobs:
+  # Trabajo para re-firmar y desplegar
+  re-sign-and-deploy:
+    # Ejecutar en la última versión de Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      # Obtener el código del repositorio
+      - name: Check out repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      # Configurar Git
+      - name: Configure Git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+      # Re-firmar el último commit
+      - name: Re-sign commit as repository owner
+        env:
+          GITHUB_TOKEN: ${{ secrets.ME_GITHUB_TOKEN }}
+        run: |
+          git commit --allow-empty -m "Trigger deployment"
+          git push
+      # Desplegar en Vercel
+      - name: Trigger Vercel deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_${{secrets.ID_PROYECTO}}?teamId=${{secrets.ID_DEL_EQUIPO}} -H "Authorization: Bearer $VERCEL_TOKEN"
+
