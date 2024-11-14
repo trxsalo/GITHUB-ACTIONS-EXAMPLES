@@ -10,6 +10,8 @@ jobs:
       #Descarga el repositorio
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       #Obtener la fecha actual
       - name: Set current date
         run: echo "CURRENT_DATE=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
@@ -45,21 +47,23 @@ jobs:
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          #cp "backups/backup-${{ env.CURRENT_DATE }}.sql" .
+          #git add "backups/backup-${{ env.CURRENT_DATE }}.sql"
+          ## Crear la rama "backup" si no existe y hacer push
+          if git ls-remote --exit-code --heads origin backup; then
+          echo "Branch 'backup' exists. Pushing to 'backup'."
+          git checkout backup
+          else
+          echo "Branch 'backup' does not exist. Creating 'backup' branch."
+          git checkout -b backup
+          fi
           ## Comprimir el archivo de respaldo
           tar -czf "backups/backup-${{ env.CURRENT_DATE }}.tar.gz" -C backups "backup-${{ env.CURRENT_DATE }}.sql"
           ## Agregar el archivo comprimido al repositorio
           git add "backups/backup-${{ env.CURRENT_DATE }}.tar.gz"
           git commit -m "Add compressed database backup for ${{ env.CURRENT_DATE }}"
-          ## Crear la rama "backup" si no existe y hacer push
-          if git ls-remote --exit-code --heads origin backup; then
-            echo "Branch 'backup' exists. Pushing to 'backup'."
-          else
-            echo "Branch 'backup' does not exist. Creating 'backup' branch."
-            git branch backup
-          fi
           # Hacer push a la rama "backup"
           git push origin backup
-          #git push origin main
       #Mensaje de finalización
       - name:
         run: echo "Backup completed successfully"
